@@ -1,0 +1,105 @@
+(defpackage :cl-function-bytes 
+  (:use :cl :metatilities :iterate)
+  (:import-from :split-sequence #:split-sequence)
+  (:shadowing-import-from :iterate #:minimize #:finish)
+  (:export #:*start-bytes*
+	   #:*end-bytes*
+	   #:*start-bytes-line*
+	   #:get-bytes-str-from-disassemble-output
+	   #:split-on-bytes
+	   #:function-size))
+
+(in-package :code-size)
+
+(defparameter *start-bytes* 18)	   
+(defparameter *end-bytes* 35)	   
+(defparameter *start-bytes-line* 2)
+
+#|
+(setq fn (LAMBDA (FIELD R C V)
+           (DECLARE (IGNORABLE FIELD R C V)
+                    (OPTIMIZE (SPEED 3) (SAFETY 0) (DEBUG 0))
+                    (TYPE (SIMPLE-ARRAY FIXNUM (9 9)) FIELD)
+                    (TYPE FIXNUM V))
+           (AND (/= (AREF FIELD 0 4) V) (/= (AREF FIELD 1 4) V)
+                (/= (AREF FIELD 2 4) V) (/= (AREF FIELD 3 4) V)
+                (/= (AREF FIELD 4 4) V) (/= (AREF FIELD 5 4) V)
+                (/= (AREF FIELD 6 3) V) (/= (AREF FIELD 6 4) V)
+                (/= (AREF FIELD 6 5) V) (/= (AREF FIELD 7 3) V)
+                (/= (AREF FIELD 7 4) V) (/= (AREF FIELD 7 5) V)
+                (/= (AREF FIELD 8 0) V) (/= (AREF FIELD 8 1) V)
+                (/= (AREF FIELD 8 2) V) (/= (AREF FIELD 8 3) V)
+                (/= (AREF FIELD 8 5) V) (/= (AREF FIELD 8 6) V)
+                (/= (AREF FIELD 8 7) V) (/= (AREF FIELD 8 8) V))))
+|#
+
+(defun disassemble-output-to-string (fn)
+  (with-output-to-string (str-stream)
+    (disassemble fn :stream str-stream)))
+
+#|
+(setq str (disassemble-output-to-string fn))
+|#
+
+(defun copy-rect-from-string (str x1 x2 y1 y2 &key (concatenate-p t))
+  (let* ((strs (if (listp str) 
+		   str
+		   (remove-if (compose #'zerop #'length) 
+			      (split-sequence #\Newline str))))
+	 (result
+	  (iter 	    
+	    (for cur-y from y1 below y2)
+	    (collect (subseq (nth cur-y strs) x1 x2)))))
+      (if (not concatenate-p) (return-from copy-rect-from-string result))
+      (iter 
+	(with res = "")
+	(for str in result)
+	(setq res (concatenate 'string res (string #\Newline) str))
+	(finally (return (string-left-trim (string #\Newline) res))))))
+
+#|
+(setq strs (remove-if (compose #'zerop #'length) 
+		      (split-sequence #\Newline str)))
+(setq str-with-bytes
+      (copy-rect-from-string strs
+			     *start-bytes*
+			     *end-bytes* 
+			     *start-bytes-line*
+			     (length strs)
+			     :concatenate-p t))
+(setq bytes-str 
+      (remove-if #'(lambda (char) (or (char= char #\Space) (char= char #\Newline)))
+		 str-with-bytes))
+(/ (length bytes-str) 2)
+|#
+
+(defun get-bytes-str-from-disassemble-output (fn)
+  (let* ((disassemble-output-str (disassemble-output-to-string fn))
+	 (strs-with-disassembles 
+	  (remove-if (compose #'zerop #'length) 
+		     (split-sequence #\Newline
+				     disassemble-output-str))))
+    (remove-if #'(lambda (char) 
+		   (or (char= #\Newline char) 
+		       (char= #\Space char)))
+	       (copy-rect-from-string strs-with-disassembles
+				      *start-bytes*
+				      *end-bytes* 
+				      *start-bytes-line*
+				      (length strs-with-disassembles)
+				      :concatenate-p t))))
+
+;(/ (length (get-bytes-from-disassemble-output fn)) 2)
+
+(defun split-on-bytes (str)
+  (iter (for i from 0 below (length str) by 2)
+	(collect (coerce (list (elt str i)
+			       (elt str (1+ i)))
+			 'string))))
+
+;(split-on-bytes (get-bytes-from-disassemble-output fn))
+
+(defun function-size (fn)
+  (/ (length (get-bytes-from-disassemble-output fn))
+     2))
+
